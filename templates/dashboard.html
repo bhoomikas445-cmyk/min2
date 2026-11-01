@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — PALIMPSEST{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h3 class="fw-bold mb-1"><i class="fa-solid fa-gauge-high text-info me-2"></i>Executive Memory Dashboard</h3>
+    <p class="text-muted mb-0">Live status of transparent context classification, token utilization, and version trees.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('views.workspace', project_id=current_project.id if current_project else '') }}" class="btn btn-outline-info">
+      <i class="fa-solid fa-plus me-1"></i> Ingest & Process
+    </a>
+    <a href="{{ url_for('views.reconstruct', project_id=current_project.id if current_project else '') }}" class="btn btn-info text-dark fw-bold">
+      <i class="fa-solid fa-sliders me-1"></i> Reconstruct Context
+    </a>
+  </div>
+</div>
+
+{% if not current_project %}
+  <div class="alert alert-warning">
+    <i class="fa-solid fa-triangle-exclamation me-2"></i> No active project found. Click <strong>New Project</strong> in the top header to begin!
+  </div>
+{% else %}
+  <!-- KPI Metrics Grid -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div class="kpi-card">
+        <span class="kpi-label"><i class="fa-solid fa-layer-group me-1 text-info"></i> Processed Items</span>
+        <span class="kpi-value" id="kpiTotalItems">-</span>
+        <span class="kpi-sub">Total memories ingested</span>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="kpi-card">
+        <span class="kpi-label"><i class="fa-solid fa-coins me-1 text-warning"></i> Active Memory Tokens</span>
+        <span class="kpi-value" id="kpiActiveTokens">-</span>
+        <span class="kpi-sub" id="kpiBudgetSub">Budget: {{ current_project.token_budget }} tokens</span>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="kpi-card">
+        <span class="kpi-label"><i class="fa-solid fa-percent me-1 text-success"></i> Budget Utilization</span>
+        <span class="kpi-value" id="kpiUtilization">-</span>
+        <div class="progress mt-2" style="height: 6px; background-color: rgba(255,255,255,0.1);">
+          <div class="progress-bar bg-info" id="budgetProgressBar" role="progressbar" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="kpi-card">
+        <span class="kpi-label"><i class="fa-solid fa-piggy-bank me-1 text-primary"></i> Estimated Token Savings</span>
+        <span class="kpi-value text-success" id="kpiSavings">-</span>
+        <span class="kpi-sub">Via compression & pruning</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Breakdown Cards & Chart.js -->
+  <div class="row g-4 mb-4">
+    <!-- Category Counts -->
+    <div class="col-md-4">
+      <div class="card card-dark h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span><i class="fa-solid fa-pie-chart text-info me-2"></i>Classification Distribution</span>
+          <span class="badge bg-secondary" id="badgeTotalItems">0 items</span>
+        </div>
+        <div class="card-body d-flex flex-column justify-content-between">
+          <div style="height: 220px; position: relative;">
+            <canvas id="categoryDoughnutChart"></canvas>
+          </div>
+          <div class="mt-3 pt-3 border-top border-secondary">
+            <div class="d-flex justify-content-between mb-1">
+              <span><span class="badge-verbatim me-2">VERBATIM</span> Exact Facts & Rules:</span>
+              <strong id="statVerbatim">0</strong>
+            </div>
+            <div class="d-flex justify-content-between mb-1">
+              <span><span class="badge-summary me-2">SUMMARIZE</span> Compressed State:</span>
+              <strong id="statSummary">0</strong>
+            </div>
+            <div class="d-flex justify-content-between">
+              <span><span class="badge-discard me-2">DISCARD</span> Excluded Chatter:</span>
+              <strong id="statDiscard">0</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VCS & Branching Snapshot -->
+    <div class="col-md-8">
+      <div class="card card-dark h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span><i class="fa-solid fa-code-branch text-info me-2"></i>Version Control & Lineage</span>
+          <a href="{{ url_for('views.version_control', project_id=current_project.id) }}" class="btn btn-sm btn-outline-info">Manage VCS</a>
+        </div>
+        <div class="card-body">
+          <div class="row g-3 mb-3">
+            <div class="col-sm-6">
+              <div class="p-3 bg-dark rounded border border-secondary">
+                <div class="text-muted small">TOTAL REPOSITORIES & BRANCHES</div>
+                <div class="h4 mb-0 fw-bold" id="statBranches">-</div>
+              </div>
+            </div>
+            <div class="col-sm-6">
+              <div class="p-3 bg-dark rounded border border-secondary">
+                <div class="text-muted small">COMMITTED CONTEXT VERSIONS</div>
+                <div class="h4 mb-0 fw-bold" id="statVersions">-</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="text-muted small mb-2"><i class="fa-solid fa-timeline me-1"></i> Recent Version Commit:</div>
+          <div id="latestVersionBox" class="p-3 bg-dark rounded border border-secondary">
+            <div class="text-muted">Loading latest version...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Decisions Audit Table -->
+  <div class="card card-dark">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span><i class="fa-solid fa-list-check text-info me-2"></i>Recent Memory Decisions & Transparent Explanations</span>
+      <a href="{{ url_for('views.explorer', project_id=current_project.id) }}" class="btn btn-sm btn-outline-secondary">Explore All</a>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-dark-custom mb-0">
+          <thead>
+            <tr>
+              <th style="width: 130px;">Action</th>
+              <th>Content / Rationale</th>
+              <th style="width: 140px;">Importance</th>
+              <th style="width: 110px;">Tokens</th>
+              <th style="width: 140px;">Method</th>
+            </tr>
+          </thead>
+          <tbody id="recentDecisionsTableBody">
+            <tr>
+              <td colspan="5" class="text-center text-muted py-4">Loading decision records...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", async () => {
+  const projectId = "{{ current_project.id if current_project else '' }}";
+  if (!projectId) return;
+
+  // Load project stats
+  const res = await apiCall(`/api/projects/${projectId}`);
+  if (res.success && res.project) {
+    const s = res.project.stats;
+    document.getElementById("kpiTotalItems").innerText = s.total_items;
+    document.getElementById("kpiActiveTokens").innerText = s.current_memory_tokens;
+    document.getElementById("kpiUtilization").innerText = s.budget_utilization_pct + "%";
+    document.getElementById("kpiSavings").innerText = s.token_savings + " tok";
+
+    const pBar = document.getElementById("budgetProgressBar");
+    pBar.style.width = Math.min(100, s.budget_utilization_pct) + "%";
+    if (s.budget_utilization_pct > 90) pBar.className = "progress-bar bg-danger";
+    else if (s.budget_utilization_pct > 70) pBar.className = "progress-bar bg-warning";
+
+    document.getElementById("statVerbatim").innerText = s.verbatim_count;
+    document.getElementById("statSummary").innerText = s.summary_count;
+    document.getElementById("statDiscard").innerText = s.discard_count;
+    document.getElementById("badgeTotalItems").innerText = s.total_items + " items";
+
+    renderCategoryChart("categoryDoughnutChart", s.verbatim_count, s.summary_count, s.discard_count);
+  }
+
+  // Load versions
+  const vRes = await apiCall(`/api/versions?project_id=${projectId}`);
+  if (vRes.success) {
+    document.getElementById("statVersions").innerText = vRes.versions.length;
+    if (vRes.versions.length > 0) {
+      const topV = vRes.versions[0];
+      document.getElementById("latestVersionBox").innerHTML = `
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <strong><span class="text-info font-monospace">${topV.short_hash}</span> — ${topV.label}</strong>
+          <span class="badge bg-secondary font-monospace">Branch: ${topV.branch_name}</span>
+        </div>
+        <div class="text-muted small">${topV.summary || "No summary"}</div>
+        <div class="mt-2 text-muted small"><i class="fa-regular fa-clock me-1"></i> ${new Date(topV.created_at).toLocaleString()}</div>
+      `;
+    } else {
+      document.getElementById("latestVersionBox").innerHTML = `<span class="text-muted">No versions committed yet. Go to Workspace to process messages.</span>`;
+    }
+  }
+
+  // Load branches
+  const bRes = await apiCall(`/api/branches?project_id=${projectId}`);
+  if (bRes.success) {
+    document.getElementById("statBranches").innerText = bRes.branches.length;
+  }
+
+  // Load recent decisions / items
+  const itemsRes = await apiCall(`/api/memory/items?project_id=${projectId}`);
+  const tbody = document.getElementById("recentDecisionsTableBody");
+  if (itemsRes.success && itemsRes.items.length > 0) {
+    tbody.innerHTML = "";
+    itemsRes.items.slice(0, 8).forEach(item => {
+      let badgeClass = "badge-discard";
+      if (item.category === "KEEP VERBATIM") badgeClass = "badge-verbatim";
+      else if (item.category === "SUMMARIZE") badgeClass = "badge-summary";
+
+      const instBadge = item.is_instruction_or_constraint ? `<span class="badge-constraint ms-1"><i class="fa-solid fa-lock me-1"></i>Constraint</span>` : "";
+
+      tbody.innerHTML += `
+        <tr>
+          <td><span class="${badgeClass}">${item.category}</span> ${instBadge}</td>
+          <td>
+            <div class="fw-semibold text-light mb-1">${escapeHtml(item.content.slice(0, 100))}${item.content.length > 100 ? '...' : ''}</div>
+            <div class="text-muted small"><i class="fa-solid fa-info-circle me-1"></i>${escapeHtml(item.explanation || "Classified")}</div>
+          </td>
+          <td>
+            <div class="small text-muted mb-1">${Math.round(item.importance_score * 100)}% score</div>
+            <div class="progress" style="height: 4px; background-color: rgba(255,255,255,0.1);">
+              <div class="progress-bar bg-info" style="width: ${Math.round(item.importance_score * 100)}%"></div>
+            </div>
+          </td>
+          <td>
+            <span class="font-monospace text-light">${item.stored_token_count}</span>
+            <small class="text-muted"> / ${item.original_token_count}</small>
+          </td>
+          <td><span class="badge bg-dark border border-secondary text-muted font-monospace">${item.processing_method}</span></td>
+        </tr>
+      `;
+    });
+  } else {
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">No memory items recorded yet.</td></tr>`;
+  }
+});
+
+function escapeHtml(text) {
+  if (!text) return "";
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+</script>
+{% endblock %}

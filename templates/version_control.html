@@ -1,0 +1,438 @@
+{% extends "base.html" %}
+
+{% block title %}Version Control System — PALIMPSEST{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h3 class="fw-bold mb-1"><i class="fa-solid fa-code-branch text-info me-2"></i>Git-Inspired Memory Versioning</h3>
+    <p class="text-muted mb-0">Inspect immutable version nodes, compare diffs, branch, merge, and execute safe non-destructive restorations.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <button class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#newBranchModal">
+      <i class="fa-solid fa-code-fork me-1"></i> New Branch
+    </button>
+    <button class="btn btn-info text-dark fw-bold" data-bs-toggle="modal" data-bs-target="#mergeModal">
+      <i class="fa-solid fa-code-merge me-1"></i> Merge Branches
+    </button>
+  </div>
+</div>
+
+{% if not current_project %}
+  <div class="alert alert-warning">Please select or create a project first.</div>
+{% else %}
+<!-- Version Compare & Diff Bar -->
+<div class="card card-dark mb-4">
+  <div class="card-header">
+    <i class="fa-solid fa-code-compare text-info me-2"></i>Side-by-Side Version Diff Viewer
+  </div>
+  <div class="card-body">
+    <div class="row g-3 align-items-center">
+      <div class="col-md-5">
+        <label class="form-label text-muted small">Base Version (V1)</label>
+        <select class="form-select bg-dark text-light border-secondary" id="diffV1Select"></select>
+      </div>
+      <div class="col-md-5">
+        <label class="form-label text-muted small">Target Version (V2)</label>
+        <select class="form-select bg-dark text-light border-secondary" id="diffV2Select"></select>
+      </div>
+      <div class="col-md-2 text-end">
+        <label class="form-label d-block text-muted small">&nbsp;</label>
+        <button class="btn btn-primary w-100" id="btnRunDiff"><i class="fa-solid fa-arrows-split-up-and-left me-1"></i> Compare Diff</button>
+      </div>
+    </div>
+
+    <!-- Diff Results Panel -->
+    <div id="diffResultsContainer" class="mt-4 d-none">
+      <div class="p-3 bg-dark rounded border border-secondary">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h6 class="fw-bold mb-0 text-info" id="diffSummaryTitle">Diff Summary</h6>
+          <span class="badge bg-secondary font-monospace" id="diffTokenDelta"></span>
+        </div>
+        <div id="diffContentArea"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Chronological History Timeline -->
+<div class="card card-dark">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="fa-solid fa-timeline text-info me-2"></i>Version Lineage & Commit History (<span id="versionTotalCount">0</span>)</span>
+    <span class="text-muted small">Branches maintain independent version lineages</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-dark-custom align-middle mb-0">
+        <thead>
+          <tr>
+            <th style="width: 110px;">Commit</th>
+            <th>Label & Summary</th>
+            <th style="width: 130px;">Branch</th>
+            <th style="width: 140px;">Items Breakdown</th>
+            <th style="width: 120px;">Active Tokens</th>
+            <th style="width: 160px;">Timestamp</th>
+            <th style="width: 110px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="versionTimelineTableBody">
+          <tr>
+            <td colspan="7" class="text-center text-muted py-5">Loading version tree...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- New Branch Modal -->
+<div class="modal fade" id="newBranchModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content dark-modal">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fa-solid fa-code-fork text-info me-2"></i>Create New Branch</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="newBranchForm">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label text-muted small">Branch Name</label>
+            <input type="text" class="form-control bg-dark text-light border-secondary" id="newBranchNameInput" required placeholder="e.g. feature-redis-cache">
+          </div>
+          <div class="mb-3">
+            <label class="form-label text-muted small">Fork From Version</label>
+            <select class="form-select bg-dark text-light border-secondary" id="branchSourceVersionSelect"></select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-info text-dark fw-bold">Create Branch</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Merge Branches Modal -->
+<div class="modal fade" id="mergeModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content dark-modal">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fa-solid fa-code-merge text-info me-2"></i>Merge Branches</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="mergeForm">
+        <div class="modal-body">
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label text-muted small">Source Branch (to merge in)</label>
+              <select class="form-select bg-dark text-light border-secondary" id="mergeSourceBranchSelect" required></select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label text-muted small">Target Branch (receives merge)</label>
+              <select class="form-select bg-dark text-light border-secondary" id="mergeTargetBranchSelect" required></select>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label text-muted small">Automated Conflict Resolution Strategy</label>
+            <select class="form-select bg-dark text-light border-secondary" id="mergeStrategySelect">
+              <option value="verbatim_priority">Verbatim Priority (Protects constraints and verbatim memories)</option>
+              <option value="target_wins">Target Wins (Branch receiving changes takes precedence)</option>
+              <option value="source_wins">Source Wins (Incoming branch takes precedence)</option>
+            </select>
+          </div>
+          <div id="mergeConflictAlertArea" class="d-none"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-info text-dark fw-bold" id="btnExecuteMerge">Execute Merge</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Restore Version Confirmation Modal -->
+<div class="modal fade" id="restoreModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content dark-modal">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fa-solid fa-clock-rotate-left text-warning me-2"></i>Non-Destructive Version Restore</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="restoreForm">
+        <input type="hidden" id="restoreTargetVersionId">
+        <div class="modal-body">
+          <p class="text-light">
+            You are restoring memory state to historical version: <strong class="text-info font-monospace" id="restoreVersionLabel"></strong>.
+          </p>
+          <div class="alert alert-info py-2 small">
+            <i class="fa-solid fa-shield me-1"></i> <strong>Safe Operation:</strong> Intervening history is never deleted or rewritten. A new version will be created with the historical memory snapshot.
+          </div>
+          <div class="mb-3">
+            <label class="form-label text-muted small">Restoration Commit Label</label>
+            <input type="text" class="form-control bg-dark text-light border-secondary" id="restoreLabelInput" placeholder="e.g. Rollback to Pre-Drift Checkpoint">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-warning text-dark fw-bold">Execute Safe Restore</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const projectId = "{{ current_project.id if current_project else '' }}";
+let cachedVersions = [];
+let cachedBranches = [];
+
+document.addEventListener("DOMContentLoaded", () => {
+  if (!projectId) return;
+
+  loadVersionHistory();
+  loadBranches();
+
+  // Diff compare
+  document.getElementById("btnRunDiff").addEventListener("click", async () => {
+    const v1 = document.getElementById("diffV1Select").value;
+    const v2 = document.getElementById("diffV2Select").value;
+    if (!v1 || !v2) {
+      showToast("Select both versions to compare", "error");
+      return;
+    }
+
+    const res = await apiCall(`/api/versions/diff?v1=${v1}&v2=${v2}`);
+    if (res.success) {
+      renderDiffView(res.diff);
+    } else {
+      showToast(res.error || "Diff failed", "error");
+    }
+  });
+
+  // New Branch
+  document.getElementById("newBranchForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = document.getElementById("newBranchNameInput").value.trim();
+    const source_version_id = document.getElementById("branchSourceVersionSelect").value;
+    if (!name) return;
+
+    const res = await apiCall("/api/branches", "POST", { project_id: projectId, name, source_version_id });
+    if (res.success) {
+      showToast(`Branch '${res.branch.name}' created!`, "success");
+      const modal = bootstrap.Modal.getInstance(document.getElementById("newBranchModal"));
+      if (modal) modal.hide();
+      loadBranches();
+    } else {
+      showToast(res.error || "Failed to create branch", "error");
+    }
+  });
+
+  // Merge Branches
+  document.getElementById("mergeForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const source_branch_id = document.getElementById("mergeSourceBranchSelect").value;
+    const target_branch_id = document.getElementById("mergeTargetBranchSelect").value;
+    const strategy = document.getElementById("mergeStrategySelect").value;
+
+    if (source_branch_id === target_branch_id) {
+      showToast("Source and target branch cannot be the same", "error");
+      return;
+    }
+
+    const res = await apiCall("/api/branches/merge", "POST", {
+      project_id: projectId,
+      source_branch_id,
+      target_branch_id,
+      strategy,
+    });
+
+    if (res.success) {
+      if (res.result.has_conflicts) {
+        showToast("Merge conflicts detected!", "error");
+        // Display conflicts in modal
+        const conflictArea = document.getElementById("mergeConflictAlertArea");
+        conflictArea.classList.remove("d-none");
+        conflictArea.innerHTML = `<div class="alert alert-danger">${res.result.message}</div>`;
+      } else {
+        showToast(res.result.message, "success");
+        const modal = bootstrap.Modal.getInstance(document.getElementById("mergeModal"));
+        if (modal) modal.hide();
+        loadVersionHistory();
+      }
+    } else {
+      showToast(res.error || "Merge failed", "error");
+    }
+  });
+
+  // Restore Version
+  document.getElementById("restoreForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const target_version_id = document.getElementById("restoreTargetVersionId").value;
+    const label = document.getElementById("restoreLabelInput").value.trim();
+
+    const res = await apiCall("/api/versions/restore", "POST", {
+      project_id: projectId,
+      target_version_id,
+      label,
+    });
+
+    if (res.success) {
+      showToast(res.message, "success");
+      const modal = bootstrap.Modal.getInstance(document.getElementById("restoreModal"));
+      if (modal) modal.hide();
+      loadVersionHistory();
+    } else {
+      showToast(res.error || "Restore failed", "error");
+    }
+  });
+});
+
+async function loadVersionHistory() {
+  const tbody = document.getElementById("versionTimelineTableBody");
+  const countEl = document.getElementById("versionTotalCount");
+  if (!tbody || !projectId) return;
+
+  const res = await apiCall(`/api/versions?project_id=${projectId}`);
+  if (res.success) {
+    cachedVersions = res.versions;
+    countEl.innerText = res.versions.length;
+
+    // Populate Diff dropdowns and Branch fork dropdown
+    const v1Sel = document.getElementById("diffV1Select");
+    const v2Sel = document.getElementById("diffV2Select");
+    const forkSel = document.getElementById("branchSourceVersionSelect");
+
+    v1Sel.innerHTML = "";
+    v2Sel.innerHTML = "";
+    forkSel.innerHTML = "";
+
+    res.versions.forEach((v, i) => {
+      const optText = `${v.short_hash} — ${v.label} (${v.branch_name})`;
+      v1Sel.innerHTML += `<option value="${v.id}" ${i === 1 ? 'selected' : ''}>${optText}</option>`;
+      v2Sel.innerHTML += `<option value="${v.id}" ${i === 0 ? 'selected' : ''}>${optText}</option>`;
+      forkSel.innerHTML += `<option value="${v.id}">${optText}</option>`;
+    });
+
+    if (res.versions.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-5">No versions recorded yet. Ingest and process memories in Workspace to create Version 1.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = "";
+    res.versions.forEach(v => {
+      let badgeExtra = "";
+      if (v.is_restoration) badgeExtra += `<span class="badge bg-warning text-dark ms-1"><i class="fa-solid fa-clock-rotate-left me-1"></i>Restored</span>`;
+      if (v.is_merge) badgeExtra += `<span class="badge bg-purple text-light ms-1" style="background-color: #a855f7;"><i class="fa-solid fa-code-merge me-1"></i>Merged</span>`;
+
+      tbody.innerHTML += `
+        <tr>
+          <td><span class="font-monospace text-info fw-bold">${v.short_hash}</span></td>
+          <td>
+            <div class="fw-semibold text-light">${escapeHtml(v.label)} ${badgeExtra}</div>
+            <div class="text-muted small">${escapeHtml(v.summary || "No summary")}</div>
+          </td>
+          <td><span class="badge bg-dark border border-secondary font-monospace">${v.branch_name}</span></td>
+          <td>
+            <small class="text-success">${v.verbatim_count} verb</small> •
+            <small class="text-warning">${v.summary_count} sum</small> •
+            <small class="text-danger">${v.discard_count} disc</small>
+          </td>
+          <td><span class="font-monospace text-light">${v.active_token_count}</span> <small class="text-muted">tok</small></td>
+          <td class="text-muted small">${new Date(v.created_at).toLocaleString()}</td>
+          <td>
+            <button class="btn btn-sm btn-outline-warning" onclick="openRestoreModal('${v.id}', '${v.short_hash}')" title="Restore this context version">
+              <i class="fa-solid fa-rotate-left"></i> Restore
+            </button>
+          </td>
+        </tr>
+      `;
+    });
+  }
+}
+
+async function loadBranches() {
+  const res = await apiCall(`/api/branches?project_id=${projectId}`);
+  if (res.success) {
+    cachedBranches = res.branches;
+    const srcSel = document.getElementById("mergeSourceBranchSelect");
+    const tgtSel = document.getElementById("mergeTargetBranchSelect");
+    srcSel.innerHTML = "";
+    tgtSel.innerHTML = "";
+
+    res.branches.forEach((b, i) => {
+      srcSel.innerHTML += `<option value="${b.id}" ${i === 1 ? 'selected' : ''}>${b.name}</option>`;
+      tgtSel.innerHTML += `<option value="${b.id}" ${i === 0 ? 'selected' : ''}>${b.name}</option>`;
+    });
+  }
+}
+
+function openRestoreModal(versionId, shortHash) {
+  document.getElementById("restoreTargetVersionId").value = versionId;
+  document.getElementById("restoreVersionLabel").innerText = shortHash;
+  document.getElementById("restoreLabelInput").value = `Restore from version ${shortHash}`;
+
+  const modal = new bootstrap.Modal(document.getElementById("restoreModal"));
+  modal.show();
+}
+
+function renderDiffView(diff) {
+  const container = document.getElementById("diffResultsContainer");
+  const title = document.getElementById("diffSummaryTitle");
+  const delta = document.getElementById("diffTokenDelta");
+  const area = document.getElementById("diffContentArea");
+
+  container.classList.remove("d-none");
+  title.innerText = `Diff: ${diff.v1.short_hash} (${diff.v1.label}) ➔ ${diff.v2.short_hash} (${diff.v2.label})`;
+
+  const tokenSign = diff.token_diff >= 0 ? `+${diff.token_diff}` : `${diff.token_diff}`;
+  delta.innerText = `Tokens: ${tokenSign} | Items: ${diff.items_count_diff >= 0 ? '+' : ''}${diff.items_count_diff}`;
+
+  area.innerHTML = "";
+
+  if (diff.added.length === 0 && diff.removed.length === 0 && diff.modified.length === 0) {
+    area.innerHTML = `<div class="text-muted py-2">No differences detected between these two version states.</div>`;
+    return;
+  }
+
+  // Added
+  diff.added.forEach(item => {
+    area.innerHTML += `
+      <div class="diff-added">
+        <div class="fw-bold text-success"><i class="fa-solid fa-plus me-1"></i> ADDED [${item.category}]</div>
+        <div class="text-light small">${escapeHtml(item.content)}</div>
+      </div>
+    `;
+  });
+
+  // Removed
+  diff.removed.forEach(item => {
+    area.innerHTML += `
+      <div class="diff-removed">
+        <div class="fw-bold text-danger"><i class="fa-solid fa-minus me-1"></i> REMOVED [${item.category}]</div>
+        <div class="text-light small">${escapeHtml(item.content)}</div>
+      </div>
+    `;
+  });
+
+  // Modified
+  diff.modified.forEach(item => {
+    area.innerHTML += `
+      <div class="diff-modified">
+        <div class="fw-bold text-warning"><i class="fa-solid fa-pen-fancy me-1"></i> MODIFIED: ${item.v1_category} ➔ ${item.v2_category}</div>
+        <div class="text-light small">${escapeHtml(item.content)}</div>
+      </div>
+    `;
+  });
+}
+
+function escapeHtml(text) {
+  if (!text) return "";
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+</script>
+{% endblock %}

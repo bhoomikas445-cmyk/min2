@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+
+{% block title %}Evaluation Laboratory — PALIMPSEST{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h3 class="fw-bold mb-1"><i class="fa-solid fa-flask text-info me-2"></i>Evaluation Laboratory</h3>
+    <p class="text-muted mb-0">Reproducible benchmark comparing Naive Full-History FIFO Truncation against PALIMPSEST selective retention.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <button class="btn btn-outline-info" id="btnExportCSV" disabled>
+      <i class="fa-solid fa-file-csv me-1"></i> Export CSV
+    </button>
+    <button class="btn btn-info text-dark fw-bold" id="btnRunBenchmark">
+      <i class="fa-solid fa-play me-1"></i> Run Benchmark
+    </button>
+  </div>
+</div>
+
+{% if not current_project %}
+  <div class="alert alert-warning">Please select or create a project first.</div>
+{% else %}
+<!-- Benchmark Parameter Card -->
+<div class="card card-dark mb-4">
+  <div class="card-header">
+    <i class="fa-solid fa-sliders text-info me-2"></i>Benchmark Conditions & Protocol
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-3">
+        <div class="text-muted small">EVALUATION DATASET</div>
+        <div class="fw-semibold text-light">Standard Architectural Memory Bench</div>
+        <small class="text-muted">13 turns (5 critical constraints + 8 noise turns)</small>
+      </div>
+      <div class="col-md-3">
+        <div class="text-muted small">TOKEN ESTIMATOR</div>
+        <div class="fw-semibold text-light">tiktoken (cl100k_base)</div>
+        <small class="text-muted">Fallback: char/word-ratio</small>
+      </div>
+      <div class="col-md-3">
+        <div class="text-muted small">BASELINE TRUNCATION POLICY</div>
+        <div class="fw-semibold text-light">Naive FIFO Buffer Truncation</div>
+        <small class="text-muted">Oldest turns dropped under budget</small>
+      </div>
+      <div class="col-md-3">
+        <div class="text-muted small">PRICING ASSUMPTION</div>
+        <div class="fw-semibold text-light">$0.15 per 1,000,000 tokens</div>
+        <small class="text-muted">Standard gpt-4o-mini input rate</small>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Benchmark KPI Results Grid -->
+<div class="row g-3 mb-4" id="kpiResultsRow">
+  <div class="col-md-3">
+    <div class="kpi-card">
+      <span class="kpi-label">Token Consumption</span>
+      <div class="d-flex align-items-baseline gap-2">
+        <span class="kpi-value text-info" id="kpiPalimpsestTokens">-</span>
+        <span class="text-muted small">vs <span id="kpiBaselineTokens">-</span></span>
+      </div>
+      <span class="kpi-sub text-success" id="kpiTokenReduction">-</span>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="kpi-card">
+      <span class="kpi-label">Constraint Retention Accuracy</span>
+      <span class="kpi-value text-success" id="kpiRetentionAccuracy">-</span>
+      <span class="kpi-sub" id="kpiRetentionSub">Baseline: -</span>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="kpi-card">
+      <span class="kpi-label">Estimated Input Cost</span>
+      <span class="kpi-value" id="kpiCost">-</span>
+      <span class="kpi-sub" id="kpiCostSaved">Baseline: -</span>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="kpi-card">
+      <span class="kpi-label">Preparation Latency</span>
+      <span class="kpi-value text-light" id="kpiLatency">-</span>
+      <span class="kpi-sub">Locally measured wall-clock</span>
+    </div>
+  </div>
+</div>
+
+<!-- Chart Visualizations -->
+<div class="row g-4 mb-4">
+  <div class="col-md-6">
+    <div class="card card-dark h-100">
+      <div class="card-header">
+        <i class="fa-solid fa-chart-column text-info me-2"></i>Token Consumption Comparison
+      </div>
+      <div class="card-body" style="height: 260px;">
+        <canvas id="evalTokenChart"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card card-dark h-100">
+      <div class="card-header">
+        <i class="fa-solid fa-triangle-exclamation text-warning me-2"></i>Scientific Evaluation Disclosure
+      </div>
+      <div class="card-body d-flex flex-column justify-content-between">
+        <p class="text-light small mb-3">
+          <strong>Important Evaluation Note:</strong> Smaller context sizes reduce token cost and latency, but smaller contexts do not automatically guarantee better answers if critical constraints are dropped.
+        </p>
+        <p class="text-muted small mb-0">
+          PALIMPSEST guarantees safety by explicitly prioritizing and protecting mandatory instructions and technical rules from being truncated, whereas naive sliding-window baselines drop the earliest constraints when conversations grow.
+        </p>
+        <div class="mt-3 p-2 bg-dark rounded border border-secondary text-info small">
+          <i class="fa-solid fa-circle-info me-1"></i> All metrics reflect reproducible live executions on test probes.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Detailed Question-by-Question Results Table -->
+<div class="card card-dark">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="fa-solid fa-table-list text-info me-2"></i>Probe Test Question Verification Breakdown</span>
+    <span class="badge bg-secondary" id="benchRunDateBadge">No benchmark run yet</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-dark-custom align-middle mb-0">
+        <thead>
+          <tr>
+            <th style="width: 140px;">Probe ID</th>
+            <th>Evaluation Query</th>
+            <th style="width: 130px;">Expected Fact</th>
+            <th style="width: 150px;">Baseline Recalled</th>
+            <th style="width: 160px;">PALIMPSEST Recalled</th>
+            <th style="width: 100px;">Status</th>
+          </tr>
+        </thead>
+        <tbody id="evalResultsTableBody">
+          <tr>
+            <td colspan="6" class="text-center text-muted py-5">Click "Run Benchmark" above to execute the live evaluation comparison.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const projectId = "{{ current_project.id if current_project else '' }}";
+let activeRunId = null;
+let tokenChartInstance = null;
+
+document.addEventListener("DOMContentLoaded", () => {
+  if (!projectId) return;
+
+  loadLatestBenchmark();
+
+  document.getElementById("btnRunBenchmark").addEventListener("click", runBenchmark);
+  document.getElementById("btnExportCSV").addEventListener("click", () => {
+    if (activeRunId) {
+      window.location.href = `/api/evaluation/runs/${activeRunId}/export`;
+    }
+  });
+});
+
+async function runBenchmark() {
+  const btn = document.getElementById("btnRunBenchmark");
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span> Running Benchmark...`;
+
+  const res = await apiCall("/api/evaluation/run", "POST", {
+    project_id: projectId,
+    name: "Standard Architectural Benchmark",
+    token_budget: 400,
+  });
+
+  btn.disabled = false;
+  btn.innerHTML = `<i class="fa-solid fa-play me-1"></i> Run Benchmark`;
+
+  if (res.success) {
+    showToast("Benchmark completed successfully!", "success");
+    loadRunDetails(res.evaluation_run.id);
+  } else {
+    showToast(res.error || "Benchmark execution failed", "error");
+  }
+}
+
+async function loadLatestBenchmark() {
+  const res = await apiCall(`/api/evaluation/runs?project_id=${projectId}`);
+  if (res.success && res.runs.length > 0) {
+    loadRunDetails(res.runs[0].id);
+  }
+}
+
+async function loadRunDetails(runId) {
+  const res = await apiCall(`/api/evaluation/runs/${runId}`);
+  if (!res.success) return;
+
+  const run = res.run;
+  activeRunId = run.id;
+  document.getElementById("btnExportCSV").disabled = false;
+  document.getElementById("benchRunDateBadge").innerText = `Run: ${new Date(run.created_at).toLocaleString()}`;
+
+  // KPI Metrics
+  document.getElementById("kpiPalimpsestTokens").innerText = run.palimpsest_tokens;
+  document.getElementById("kpiBaselineTokens").innerText = run.baseline_tokens;
+  document.getElementById("kpiTokenReduction").innerText = `↓ ${run.token_reduction_pct}% reduction`;
+
+  document.getElementById("kpiRetentionAccuracy").innerText = `${run.retention_accuracy}%`;
+  document.getElementById("kpiRetentionSub").innerText = `Baseline: 0.0% (truncated)`;
+
+  document.getElementById("kpiCost").innerText = `$${run.palimpsest_cost_usd.toFixed(6)}`;
+  document.getElementById("kpiCostSaved").innerText = `Baseline: $${run.baseline_cost_usd.toFixed(6)}`;
+
+  document.getElementById("kpiLatency").innerText = `${run.palimpsest_latency_ms} ms`;
+
+  // Update Chart
+  if (tokenChartInstance) tokenChartInstance.destroy();
+  tokenChartInstance = renderTokenComparisonChart("evalTokenChart", run.baseline_tokens, run.palimpsest_tokens);
+
+  // Results Table
+  const tbody = document.getElementById("evalResultsTableBody");
+  tbody.innerHTML = "";
+
+  run.results.forEach(r => {
+    const bBadge = r.baseline_recalled ? `<span class="badge bg-success">RECALLED</span>` : `<span class="badge bg-danger">TRUNCATED</span>`;
+    const pBadge = r.palimpsest_recalled ? `<span class="badge bg-success">RECALLED</span>` : `<span class="badge bg-danger">MISSED</span>`;
+    const statusBadge = r.passed ? `<span class="badge bg-success"><i class="fa-solid fa-check me-1"></i>PASS</span>` : `<span class="badge bg-danger">FAIL</span>`;
+
+    tbody.innerHTML += `
+      <tr>
+        <td class="font-monospace text-info">${r.question_id}</td>
+        <td>
+          <div class="text-light fw-medium">${escapeHtml(r.query)}</div>
+          <div class="text-muted small">${escapeHtml(r.details || '')}</div>
+        </td>
+        <td><span class="badge bg-dark border border-secondary font-monospace text-light">${r.expected_answer}</span></td>
+        <td>${bBadge}</td>
+        <td>${pBadge}</td>
+        <td>${statusBadge}</td>
+      </tr>
+    `;
+  });
+}
+
+function escapeHtml(text) {
+  if (!text) return "";
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+</script>
+{% endblock %}

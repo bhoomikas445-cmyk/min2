@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+
+{% block title %}Drift Recovery Demonstration — PALIMPSEST{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h3 class="fw-bold mb-1"><i class="fa-solid fa-shield-halved text-warning me-2"></i>Drift Recovery Demonstration</h3>
+    <p class="text-muted mb-0">Reproduce memory drift corruption and observe verifiable recovery via non-destructive historical rollback.</p>
+  </div>
+  <div>
+    <button class="btn btn-warning text-dark fw-bold" id="btnRunDriftDemo">
+      <i class="fa-solid fa-play me-1"></i> Execute 7-Phase Drift Demo
+    </button>
+  </div>
+</div>
+
+<!-- 7-Phase Flow Indicator -->
+<div class="card card-dark mb-4">
+  <div class="card-body p-3">
+    <div class="row text-center g-2">
+      <div class="col">
+        <div class="p-2 rounded bg-dark border border-secondary">
+          <small class="text-muted d-block">Phase 1</small>
+          <span class="text-success small fw-bold">1. Constraints Checkpoint</span>
+        </div>
+      </div>
+      <div class="col">
+        <div class="p-2 rounded bg-dark border border-secondary">
+          <small class="text-muted d-block">Phase 2</small>
+          <span class="text-light small fw-bold">2. Noise Ingestion</span>
+        </div>
+      </div>
+      <div class="col">
+        <div class="p-2 rounded bg-dark border border-danger">
+          <small class="text-muted d-block">Phase 3</small>
+          <span class="text-danger small fw-bold">3. Toxic Drift Added</span>
+        </div>
+      </div>
+      <div class="col">
+        <div class="p-2 rounded bg-dark border border-danger">
+          <small class="text-muted d-block">Phase 4</small>
+          <span class="text-danger small fw-bold">4. Drifted Context</span>
+        </div>
+      </div>
+      <div class="col">
+        <div class="p-2 rounded bg-dark border border-warning">
+          <small class="text-muted d-block">Phase 5</small>
+          <span class="text-warning small fw-bold">5. Rollback to V1</span>
+        </div>
+      </div>
+      <div class="col">
+        <div class="p-2 rounded bg-dark border border-success">
+          <small class="text-muted d-block">Phase 6</small>
+          <span class="text-success small fw-bold">6. Clean Reconstruct</span>
+        </div>
+      </div>
+      <div class="col">
+        <div class="p-2 rounded bg-dark border border-success">
+          <small class="text-muted d-block">Phase 7</small>
+          <span class="text-success small fw-bold">7. Verified Recovery</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Live Verification Status Badge Banner -->
+<div id="verificationBanner" class="d-none alert alert-success d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h5 class="alert-heading mb-1"><i class="fa-solid fa-circle-check me-2"></i>RECOVERY SCIENTIFICALLY VERIFIED</h5>
+    <div class="small" id="verificationDetailsText">All constraints recovered; toxic drift eradicated.</div>
+  </div>
+  <span class="badge bg-success fs-6 px-3 py-2">STATUS: PASSED</span>
+</div>
+
+<!-- Before & After Comparison Columns -->
+<div class="row g-4 mb-4">
+  <!-- Drifted Context (Phase 4) -->
+  <div class="col-md-6">
+    <div class="card card-dark h-100 border-danger">
+      <div class="card-header bg-danger bg-opacity-10 d-flex justify-content-between align-items-center border-danger">
+        <span class="text-danger fw-bold"><i class="fa-solid fa-triangle-exclamation me-2"></i>Phase 4: Drifted & Polluted Context</span>
+        <span class="badge bg-danger" id="driftTokensBadge">0 tokens</span>
+      </div>
+      <div class="card-body">
+        <p class="text-muted small">Reconstruction prior to recovery contains toxic drift replacing PostgreSQL with MongoDB and dropping HIPAA:</p>
+        <pre class="context-package-output border-danger text-light mb-0" id="driftContextBox" style="max-height: 320px;">Run demo to view drifted context...</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Restored Context (Phase 6) -->
+  <div class="col-md-6">
+    <div class="card card-dark h-100 border-success">
+      <div class="card-header bg-success bg-opacity-10 d-flex justify-content-between align-items-center border-success">
+        <span class="text-success fw-bold"><i class="fa-solid fa-shield-check me-2"></i>Phase 6: Recovered & Restored Context</span>
+        <span class="badge bg-success" id="restoredTokensBadge">0 tokens</span>
+      </div>
+      <div class="card-body">
+        <p class="text-muted small">Reconstruction following historical rollback to Phase 1 checkpoint:</p>
+        <pre class="context-package-output border-success text-info mb-0" id="restoredContextBox" style="max-height: 320px;">Run demo to view restored context...</pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Diff between Drifted and Restored State -->
+<div class="card card-dark mb-4">
+  <div class="card-header">
+    <i class="fa-solid fa-code-compare text-info me-2"></i>Diff: Polluted Drift (V3) ➔ Restored Version (V4)
+  </div>
+  <div class="card-body">
+    <div id="driftDiffArea" class="text-muted small">Run demo to view automated structural diff of the recovery operation.</div>
+  </div>
+</div>
+
+<!-- Evaluation Verification Checklist -->
+<div class="card card-dark">
+  <div class="card-header">
+    <i class="fa-solid fa-list-check text-info me-2"></i>Automated Verification Checks
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-dark-custom align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Target Requirement</th>
+          <th style="width: 180px;">Target Presence</th>
+          <th style="width: 180px;">Verification Result</th>
+        </tr>
+      </thead>
+      <tbody id="verificationChecklistBody">
+        <tr>
+          <td>PostgreSQL & async SQLAlchemy retained</td>
+          <td><span class="badge bg-secondary font-monospace">MUST BE PRESENT</span></td>
+          <td><span class="text-muted">—</span></td>
+        </tr>
+        <tr>
+          <td>JWT authentication constraint retained</td>
+          <td><span class="badge bg-secondary font-monospace">MUST BE PRESENT</span></td>
+          <td><span class="text-muted">—</span></td>
+        </tr>
+        <tr>
+          <td>HIPAA regulatory compliance retained</td>
+          <td><span class="badge bg-secondary font-monospace">MUST BE PRESENT</span></td>
+          <td><span class="text-muted">—</span></td>
+        </tr>
+        <tr>
+          <td>Toxic MongoDB drift directive removed</td>
+          <td><span class="badge bg-secondary font-monospace">MUST BE ERADICATED</span></td>
+          <td><span class="text-muted">—</span></td>
+        </tr>
+        <tr>
+          <td>Public unencrypted S3 storage directive removed</td>
+          <td><span class="badge bg-secondary font-monospace">MUST BE ERADICATED</span></td>
+          <td><span class="text-muted">—</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const projectId = "{{ current_project.id if current_project else '' }}";
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("btnRunDriftDemo").addEventListener("click", runDriftDemo);
+});
+
+async function runDriftDemo() {
+  const btn = document.getElementById("btnRunDriftDemo");
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span> Executing 7 Phases...`;
+
+  const res = await apiCall("/api/drift-demo/run", "POST", { project_id: projectId });
+
+  btn.disabled = false;
+  btn.innerHTML = `<i class="fa-solid fa-play me-1"></i> Execute 7-Phase Drift Demo`;
+
+  if (res.success) {
+    showToast("Drift recovery demonstration completed!", "success");
+    renderDemoResults(res.demo);
+  } else {
+    showToast(res.error || "Demo failed", "error");
+  }
+}
+
+function renderDemoResults(demo) {
+  // Context outputs
+  document.getElementById("driftContextBox").innerText = demo.drift_context.text;
+  document.getElementById("driftTokensBadge").innerText = `${demo.drift_context.tokens} tok`;
+
+  document.getElementById("restoredContextBox").innerText = demo.restored_context.text;
+  document.getElementById("restoredTokensBadge").innerText = `${demo.restored_context.tokens} tok`;
+
+  // Verification Banner
+  const banner = document.getElementById("verificationBanner");
+  banner.classList.remove("d-none");
+
+  const v = demo.verification;
+  document.getElementById("verificationDetailsText").innerText = `
+    PostgreSQL: ${v.postgres_recovered ? '✓' : '✗'} | JWT: ${v.jwt_recovered ? '✓' : '✗'} | HIPAA: ${v.hipaa_recovered ? '✓' : '✗'} | MongoDB Eradicated: ${v.mongodb_eradicated ? '✓' : '✗'}
+  `;
+
+  // Checklist table
+  const tbody = document.getElementById("verificationChecklistBody");
+  tbody.innerHTML = `
+    <tr>
+      <td>PostgreSQL & async SQLAlchemy retained</td>
+      <td><span class="badge bg-secondary font-monospace">MUST BE PRESENT</span></td>
+      <td>${v.postgres_recovered ? '<span class="badge bg-success"><i class="fa-solid fa-check me-1"></i>RECOVERED</span>' : '<span class="badge bg-danger">FAILED</span>'}</td>
+    </tr>
+    <tr>
+      <td>JWT authentication constraint retained</td>
+      <td><span class="badge bg-secondary font-monospace">MUST BE PRESENT</span></td>
+      <td>${v.jwt_recovered ? '<span class="badge bg-success"><i class="fa-solid fa-check me-1"></i>RECOVERED</span>' : '<span class="badge bg-danger">FAILED</span>'}</td>
+    </tr>
+    <tr>
+      <td>HIPAA regulatory compliance retained</td>
+      <td><span class="badge bg-secondary font-monospace">MUST BE PRESENT</span></td>
+      <td>${v.hipaa_recovered ? '<span class="badge bg-success"><i class="fa-solid fa-check me-1"></i>RECOVERED</span>' : '<span class="badge bg-danger">FAILED</span>'}</td>
+    </tr>
+    <tr>
+      <td>Toxic MongoDB drift directive removed</td>
+      <td><span class="badge bg-secondary font-monospace">MUST BE ERADICATED</span></td>
+      <td>${v.mongodb_eradicated ? '<span class="badge bg-success"><i class="fa-solid fa-shield me-1"></i>ERADICATED</span>' : '<span class="badge bg-danger">STILL PRESENT</span>'}</td>
+    </tr>
+    <tr>
+      <td>Public unencrypted S3 storage directive removed</td>
+      <td><span class="badge bg-secondary font-monospace">MUST BE ERADICATED</span></td>
+      <td>${v.unencrypted_eradicated ? '<span class="badge bg-success"><i class="fa-solid fa-shield me-1"></i>ERADICATED</span>' : '<span class="badge bg-danger">STILL PRESENT</span>'}</td>
+    </tr>
+  `;
+
+  // Diff Area
+  const diffArea = document.getElementById("driftDiffArea");
+  diffArea.innerHTML = "";
+  if (demo.diff.added.length > 0 || demo.diff.removed.length > 0 || demo.diff.modified.length > 0) {
+    demo.diff.removed.forEach(item => {
+      diffArea.innerHTML += `
+        <div class="diff-removed">
+          <div class="fw-bold text-danger"><i class="fa-solid fa-minus me-1"></i> REMOVED FROM CONTEXT:</div>
+          <div class="text-light small">${escapeHtml(item.content)}</div>
+        </div>
+      `;
+    });
+    demo.diff.added.forEach(item => {
+      diffArea.innerHTML += `
+        <div class="diff-added">
+          <div class="fw-bold text-success"><i class="fa-solid fa-plus me-1"></i> RESTORED TO CONTEXT:</div>
+          <div class="text-light small">${escapeHtml(item.content)}</div>
+        </div>
+      `;
+    });
+  } else {
+    diffArea.innerHTML = `<span class="text-muted">Clean restoration completed.</span>`;
+  }
+}
+
+function escapeHtml(text) {
+  if (!text) return "";
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+</script>
+{% endblock %}

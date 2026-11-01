@@ -1,0 +1,386 @@
+{% extends "base.html" %}
+
+{% block title %}Conversation Workspace — PALIMPSEST{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h3 class="fw-bold mb-1"><i class="fa-solid fa-comments text-info me-2"></i>Conversation & Ingestion Workspace</h3>
+    <p class="text-muted mb-0">Ingest dialogues, documentation, or long transcripts and process them through the memory engine.</p>
+  </div>
+  <div>
+    <button class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#newConvModal">
+      <i class="fa-solid fa-plus me-1"></i> New Session
+    </button>
+  </div>
+</div>
+
+{% if not current_project %}
+  <div class="alert alert-warning">Please select or create a project first.</div>
+{% else %}
+<div class="row g-4">
+  <!-- Left Column: Ingestion Options -->
+  <div class="col-lg-5">
+    <div class="card card-dark mb-4">
+      <div class="card-header">
+        <ul class="nav nav-tabs card-header-tabs" id="ingestTabs" role="tablist">
+          <li class="nav-item">
+            <button class="nav-link active text-light" id="msg-tab" data-bs-toggle="tab" data-bs-target="#tab-message" type="button">
+              <i class="fa-solid fa-message me-1"></i> Add Turn
+            </button>
+          </li>
+          <li class="nav-item">
+            <button class="nav-link text-light" id="paste-tab" data-bs-toggle="tab" data-bs-target="#tab-paste" type="button">
+              <i class="fa-solid fa-paste me-1"></i> Paste History
+            </button>
+          </li>
+          <li class="nav-item">
+            <button class="nav-link text-light" id="upload-tab" data-bs-toggle="tab" data-bs-target="#tab-upload" type="button">
+              <i class="fa-solid fa-file-arrow-up me-1"></i> Upload Doc
+            </button>
+          </li>
+        </ul>
+      </div>
+      <div class="card-body">
+        <div class="tab-content" id="ingestTabsContent">
+          <!-- Tab 1: Single Message -->
+          <div class="tab-pane fade show active" id="tab-message">
+            <form id="singleMessageForm">
+              <div class="mb-3">
+                <label class="form-label text-muted small">Target Session</label>
+                <select class="form-select bg-dark text-light border-secondary" id="sessionSelect">
+                  {% for c in current_project.conversations %}
+                    <option value="{{ c.id }}">{{ c.title }} ({{ c.messages|length }} msgs)</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label text-muted small">Role</label>
+                <select class="form-select bg-dark text-light border-secondary" id="messageRole">
+                  <option value="user">User</option>
+                  <option value="assistant">Assistant</option>
+                  <option value="system">System</option>
+                  <option value="tool">Tool</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label text-muted small">Message Content / Instruction</label>
+                <textarea class="form-control bg-dark text-light border-secondary" id="messageContent" rows="4" required placeholder="e.g. Always use PostgreSQL with async SQLAlchemy..."></textarea>
+              </div>
+              <button type="submit" class="btn btn-primary w-100">
+                <i class="fa-solid fa-paper-plane me-1"></i> Ingest Turn
+              </button>
+            </form>
+          </div>
+
+          <!-- Tab 2: Paste Long History -->
+          <div class="tab-pane fade" id="tab-paste">
+            <form id="pasteHistoryForm">
+              <div class="mb-3">
+                <label class="form-label text-muted small">Target Session</label>
+                <select class="form-select bg-dark text-light border-secondary" id="pasteSessionSelect">
+                  {% for c in current_project.conversations %}
+                    <option value="{{ c.id }}">{{ c.title }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label text-muted small">Paste Multi-turn Transcript or Text</label>
+                <textarea class="form-control bg-dark text-light border-secondary" id="pasteContent" rows="6" required placeholder="User: We need strict HIPAA compliance.&#10;Assistant: Acknowledged. Encryption at rest is enabled.&#10;User: Hello, great weather today!"></textarea>
+                <small class="text-muted">Lines prefixed with 'User:', 'Assistant:', etc. are parsed automatically into separate turns.</small>
+              </div>
+              <button type="submit" class="btn btn-primary w-100">
+                <i class="fa-solid fa-file-import me-1"></i> Parse & Ingest Transcript
+              </button>
+            </form>
+          </div>
+
+          <!-- Tab 3: Upload Text/Markdown Document -->
+          <div class="tab-pane fade" id="tab-upload">
+            <form id="uploadDocForm">
+              <div class="mb-3">
+                <label class="form-label text-muted small">Target Session</label>
+                <select class="form-select bg-dark text-light border-secondary" id="uploadSessionSelect">
+                  {% for c in current_project.conversations %}
+                    <option value="{{ c.id }}">{{ c.title }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label text-muted small">Select File (.txt, .md, .markdown)</label>
+                <input type="file" class="form-control bg-dark text-light border-secondary" id="fileUploadInput" accept=".txt,.md,.markdown,.json" required>
+                <small class="text-muted">Max file size: 5MB. Ingested as structured document blocks.</small>
+              </div>
+              <button type="submit" class="btn btn-primary w-100">
+                <i class="fa-solid fa-cloud-arrow-up me-1"></i> Upload Document
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Processing Controller Card -->
+    <div class="card card-dark">
+      <div class="card-header">
+        <i class="fa-solid fa-bolt text-warning me-2"></i>Run Memory Decision Engine
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label text-muted small">Context Token Budget for this run</label>
+          <div class="d-flex align-items-center gap-3">
+            <input type="range" class="form-range" id="runTokenBudgetSlider" min="250" max="8000" step="50" value="{{ current_project.token_budget }}">
+            <span class="badge bg-dark border border-secondary text-info font-monospace fs-6" id="runTokenBudgetValue">{{ current_project.token_budget }} tok</span>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label text-muted small">Version Commit Label</label>
+          <input type="text" class="form-control bg-dark text-light border-secondary" id="versionLabelInput" placeholder="e.g. Ingested Architecture Specs">
+        </div>
+        <button class="btn btn-success w-100 fw-bold py-2" id="btnRunEngine">
+          <i class="fa-solid fa-gears me-2"></i> Classify & Create Version Checkpoint
+        </button>
+        <div id="engineStatusSpinner" class="text-center mt-3 d-none">
+          <div class="spinner-border text-info spinner-border-sm me-2" role="status"></div>
+          <span class="text-muted small">Evaluating importance, relevance, constraints, and compressing...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Column: Raw Conversation Queue -->
+  <div class="col-lg-7">
+    <div class="card card-dark h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fa-solid fa-list-ul text-info me-2"></i>Ingestion Stream & Unprocessed Queue</span>
+        <button class="btn btn-sm btn-outline-secondary" id="btnRefreshMessages"><i class="fa-solid fa-rotate me-1"></i> Refresh</button>
+      </div>
+      <div class="card-body p-0">
+        <div id="messagesListContainer" class="p-3" style="max-height: 680px; overflow-y: auto;">
+          <div class="text-center text-muted py-5">Loading conversation stream...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- New Conversation Modal -->
+<div class="modal fade" id="newConvModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content dark-modal">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fa-solid fa-plus text-info me-2"></i>Create New Session</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="newConvForm">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label text-muted small">Session Title</label>
+            <input type="text" class="form-control bg-dark text-light border-secondary" id="convTitleInput" required placeholder="e.g. Architecture Discussion">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-info text-dark fw-bold">Create Session</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const projectId = "{{ current_project.id if current_project else '' }}";
+
+document.addEventListener("DOMContentLoaded", () => {
+  if (!projectId) return;
+
+  const slider = document.getElementById("runTokenBudgetSlider");
+  const sliderVal = document.getElementById("runTokenBudgetValue");
+  if (slider) {
+    slider.addEventListener("input", (e) => {
+      sliderVal.innerText = e.target.value + " tok";
+    });
+  }
+
+  loadConversationStream();
+
+  // Single message submission
+  document.getElementById("singleMessageForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const convId = document.getElementById("sessionSelect").value;
+    const role = document.getElementById("messageRole").value;
+    const content = document.getElementById("messageContent").value.trim();
+    if (!convId || !content) return;
+
+    const res = await apiCall(`/api/conversations/${convId}/messages`, "POST", { role, content });
+    if (res.success) {
+      showToast("Turn added to stream!", "success");
+      document.getElementById("messageContent").value = "";
+      loadConversationStream();
+    } else {
+      showToast(res.error || "Failed to add message", "error");
+    }
+  });
+
+  // Paste history submission
+  document.getElementById("pasteHistoryForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const convId = document.getElementById("pasteSessionSelect").value;
+    const text = document.getElementById("pasteContent").value.trim();
+    if (!convId || !text) return;
+
+    // Parse lines
+    const lines = text.split("\n").filter(l => l.trim().length > 0);
+    const messages = [];
+    lines.forEach(line => {
+      let role = "user";
+      let content = line;
+      if (line.toLowerCase().startsWith("user:")) {
+        role = "user";
+        content = line.slice(5).trim();
+      } else if (line.toLowerCase().startsWith("assistant:")) {
+        role = "assistant";
+        content = line.slice(10).trim();
+      } else if (line.toLowerCase().startsWith("system:")) {
+        role = "system";
+        content = line.slice(7).trim();
+      }
+      if (content) messages.push({ role, content });
+    });
+
+    const res = await apiCall(`/api/conversations/${convId}/messages`, "POST", { messages });
+    if (res.success) {
+      showToast(`Ingested ${res.count} turns into conversation!`, "success");
+      document.getElementById("pasteContent").value = "";
+      loadConversationStream();
+    } else {
+      showToast(res.error || "Failed to ingest transcript", "error");
+    }
+  });
+
+  // Upload Doc submission
+  document.getElementById("uploadDocForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const convId = document.getElementById("uploadSessionSelect").value;
+    const fileInput = document.getElementById("fileUploadInput");
+    if (!fileInput.files.length) return;
+
+    const formData = new FormData();
+    formData.append("file", fileInput.files[0]);
+
+    try {
+      const res = await fetch(`/api/conversations/${convId}/upload`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Uploaded ${data.filename} (${data.paragraphs_ingested} paragraphs)!`, "success");
+        fileInput.value = "";
+        loadConversationStream();
+      } else {
+        showToast(data.error || "Upload failed", "error");
+      }
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
+  // New Conversation session
+  document.getElementById("newConvForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const title = document.getElementById("convTitleInput").value.trim();
+    if (!title) return;
+
+    const res = await apiCall("/api/conversations", "POST", { project_id: projectId, title });
+    if (res.success) {
+      showToast("Session created!", "success");
+      location.reload();
+    } else {
+      showToast(res.error || "Failed", "error");
+    }
+  });
+
+  // Run Memory Engine button
+  document.getElementById("btnRunEngine").addEventListener("click", async () => {
+    const spinner = document.getElementById("engineStatusSpinner");
+    const btn = document.getElementById("btnRunEngine");
+    const label = document.getElementById("versionLabelInput").value.trim();
+
+    spinner.classList.remove("d-none");
+    btn.disabled = true;
+
+    const res = await apiCall("/api/memory/process", "POST", {
+      project_id: projectId,
+      version_label: label,
+    });
+
+    spinner.classList.add("d-none");
+    btn.disabled = false;
+
+    if (res.success) {
+      if (res.processed_count === 0) {
+        showToast("No new messages to process.", "info");
+      } else {
+        showToast(`Processed ${res.processed_count} messages! New version: ${res.version.short_hash}`, "success");
+        loadConversationStream();
+      }
+    } else {
+      showToast(res.error || "Processing failed", "error");
+    }
+  });
+
+  document.getElementById("btnRefreshMessages").addEventListener("click", loadConversationStream);
+});
+
+async function loadConversationStream() {
+  const container = document.getElementById("messagesListContainer");
+  if (!container || !projectId) return;
+
+  const res = await apiCall(`/api/projects/${projectId}`);
+  if (!res.success) return;
+
+  // Query all items to check what's unprocessed
+  const itemsRes = await apiCall(`/api/memory/items?project_id=${projectId}`);
+  
+  // We can also fetch the messages directly
+  // For simplicity, let's render the list of active memories and indicate state
+  if (itemsRes.success && itemsRes.items.length > 0) {
+    container.innerHTML = "";
+    itemsRes.items.forEach((item, idx) => {
+      let badgeClass = "badge-discard";
+      if (item.category === "KEEP VERBATIM") badgeClass = "badge-verbatim";
+      else if (item.category === "SUMMARIZE") badgeClass = "badge-summary";
+
+      const instBadge = item.is_instruction_or_constraint ? `<span class="badge-constraint ms-1"><i class="fa-solid fa-lock me-1"></i>Constraint</span>` : "";
+
+      container.innerHTML += `
+        <div class="p-3 mb-2 bg-dark rounded border border-secondary">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <div>
+              <span class="${badgeClass}">${item.category}</span>
+              ${instBadge}
+              <span class="text-muted small ms-2"><i class="fa-solid fa-coins me-1"></i>${item.stored_token_count} tok</span>
+            </div>
+            <span class="text-muted small">${new Date(item.created_at).toLocaleTimeString()}</span>
+          </div>
+          <div class="text-light mt-2">${escapeHtml(item.content)}</div>
+          ${item.summary_content ? `<div class="mt-2 p-2 rounded bg-black text-warning small"><i class="fa-solid fa-compress me-1"></i><strong>Compressed:</strong> ${escapeHtml(item.summary_content)}</div>` : ''}
+          <div class="text-muted small mt-2"><i class="fa-solid fa-info-circle me-1"></i>${escapeHtml(item.explanation || "Classified")}</div>
+        </div>
+      `;
+    });
+  } else {
+    container.innerHTML = `<div class="text-center text-muted py-5"><i class="fa-solid fa-inbox fa-2x mb-3 d-block text-secondary"></i>No messages ingested yet. Use the tabs on the left to add turns!</div>`;
+  }
+}
+
+function escapeHtml(text) {
+  if (!text) return "";
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+</script>
+{% endblock %}

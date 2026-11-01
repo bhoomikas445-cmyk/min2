@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+
+{% block title %}Memory Explorer — PALIMPSEST{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h3 class="fw-bold mb-1"><i class="fa-solid fa-brain text-info me-2"></i>Memory Explorer & Inspector</h3>
+    <p class="text-muted mb-0">Search, filter, audit rationale, and execute manual overrides with complete provenance tracking.</p>
+  </div>
+</div>
+
+{% if not current_project %}
+  <div class="alert alert-warning">Please select or create a project first.</div>
+{% else %}
+<!-- Filter Controls -->
+<div class="card card-dark mb-4">
+  <div class="card-body">
+    <div class="row g-3 align-items-center">
+      <div class="col-md-5">
+        <div class="input-group">
+          <span class="input-group-text bg-dark border-secondary text-muted"><i class="fa-solid fa-search"></i></span>
+          <input type="text" class="form-control bg-dark text-light border-secondary" id="searchInput" placeholder="Search memory content, constraints, tags...">
+        </div>
+      </div>
+      <div class="col-md-3">
+        <select class="form-select bg-dark text-light border-secondary" id="categoryFilter">
+          <option value="">All Categories</option>
+          <option value="KEEP VERBATIM">Keep Verbatim</option>
+          <option value="SUMMARIZE">Summarize</option>
+          <option value="DISCARD">Discard</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <select class="form-select bg-dark text-light border-secondary" id="constraintFilter">
+          <option value="">All Types</option>
+          <option value="true">Constraints Only</option>
+          <option value="false">Non-Constraints Only</option>
+        </select>
+      </div>
+      <div class="col-md-2 text-end">
+        <button class="btn btn-outline-info w-100" id="btnApplyFilter"><i class="fa-solid fa-filter me-1"></i> Apply Filter</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Memories Table Card -->
+<div class="card card-dark">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="fa-solid fa-database text-info me-2"></i>Active Project Memories (<span id="totalItemsCount">0</span>)</span>
+    <span class="text-muted small">Discarded memories are audited but excluded from context reconstruction</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-dark-custom align-middle mb-0">
+        <thead>
+          <tr>
+            <th style="width: 140px;">Action / State</th>
+            <th>Memory Content & Summary</th>
+            <th style="width: 140px;">Scores</th>
+            <th style="width: 130px;">Tokens</th>
+            <th style="width: 130px;">Tags</th>
+            <th style="width: 100px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="memoryItemsTableBody">
+          <tr>
+            <td colspan="6" class="text-center text-muted py-5">Loading memory records...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Manual Override Modal -->
+<div class="modal fade" id="overrideModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content dark-modal">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fa-solid fa-pen-to-square text-warning me-2"></i>Manual Decision Override</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="overrideForm">
+        <input type="hidden" id="overrideItemId">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label text-muted small">Memory Item Preview</label>
+            <div class="p-2 bg-dark rounded border border-secondary text-light small" id="overrideItemPreview"></div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label text-muted small">New Memory Action</label>
+            <select class="form-select bg-dark text-light border-secondary" id="overrideActionSelect" required>
+              <option value="KEEP VERBATIM">KEEP VERBATIM — Store exact content</option>
+              <option value="SUMMARIZE">SUMMARIZE — Compress essential meaning</option>
+              <option value="DISCARD">DISCARD — Exclude from active context</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label text-muted small">Audit Reason for Manual Override</label>
+            <textarea class="form-control bg-dark text-light border-secondary" id="overrideReasonInput" rows="3" required placeholder="State why this override was made (will be logged in tamper-evident audit history)..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-warning text-dark fw-bold">Save Override & Log Audit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const projectId = "{{ current_project.id if current_project else '' }}";
+let currentMemories = [];
+
+document.addEventListener("DOMContentLoaded", () => {
+  if (!projectId) return;
+
+  loadMemoryItems();
+
+  document.getElementById("btnApplyFilter").addEventListener("click", loadMemoryItems);
+  document.getElementById("searchInput").addEventListener("keyup", (e) => {
+    if (e.key === "Enter") loadMemoryItems();
+  });
+
+  // Handle Override Form
+  document.getElementById("overrideForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const itemId = document.getElementById("overrideItemId").value;
+    const action = document.getElementById("overrideActionSelect").value;
+    const reason = document.getElementById("overrideReasonInput").value.trim();
+
+    if (!itemId || !action || !reason) return;
+
+    const res = await apiCall(`/api/memory/items/${itemId}`, "PUT", { action, reason });
+    if (res.success) {
+      showToast("Manual override recorded in audit history!", "success");
+      const modal = bootstrap.Modal.getInstance(document.getElementById("overrideModal"));
+      if (modal) modal.hide();
+      loadMemoryItems();
+    } else {
+      showToast(res.error || "Failed to update item", "error");
+    }
+  });
+});
+
+async function loadMemoryItems() {
+  const tbody = document.getElementById("memoryItemsTableBody");
+  const countEl = document.getElementById("totalItemsCount");
+  if (!tbody || !projectId) return;
+
+  const q = document.getElementById("searchInput").value.trim();
+  const category = document.getElementById("categoryFilter").value;
+  const isInst = document.getElementById("constraintFilter").value;
+
+  let url = `/api/memory/items?project_id=${projectId}`;
+  if (q) url += `&q=${encodeURIComponent(q)}`;
+  if (category) url += `&category=${encodeURIComponent(category)}`;
+  if (isInst) url += `&is_instruction=${encodeURIComponent(isInst)}`;
+
+  const res = await apiCall(url);
+  if (res.success) {
+    currentMemories = res.items;
+    countEl.innerText = res.count;
+    if (res.items.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-5">No memory items match your filter criteria.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = "";
+    res.items.forEach(item => {
+      let badgeClass = "badge-discard";
+      if (item.category === "KEEP VERBATIM") badgeClass = "badge-verbatim";
+      else if (item.category === "SUMMARIZE") badgeClass = "badge-summary";
+
+      const instBadge = item.is_instruction_or_constraint ? `<span class="badge-constraint ms-1"><i class="fa-solid fa-lock me-1"></i>Constraint</span>` : "";
+
+      const tagsHtml = (item.topic_tags || []).map(t => `<span class="badge bg-secondary me-1 font-monospace" style="font-size: 0.65rem;">${escapeHtml(t)}</span>`).join("");
+
+      tbody.innerHTML += `
+        <tr>
+          <td>
+            <div class="mb-1"><span class="${badgeClass}">${item.category}</span></div>
+            ${instBadge}
+          </td>
+          <td>
+            <div class="text-light fw-medium mb-1">${escapeHtml(item.content)}</div>
+            ${item.summary_content ? `<div class="p-2 my-1 rounded bg-black text-warning small font-monospace"><i class="fa-solid fa-compress me-1"></i>${escapeHtml(item.summary_content)}</div>` : ''}
+            <div class="text-muted small mt-1"><i class="fa-solid fa-quote-left me-1"></i>${escapeHtml(item.explanation || "Classified")}</div>
+          </td>
+          <td>
+            <div class="small text-muted">Imp: <span class="text-light">${item.importance_score}</span></div>
+            <div class="small text-muted">Rel: <span class="text-light">${item.relevance_score}</span></div>
+            <div class="small text-muted">Red: <span class="text-light">${item.redundancy_score}</span></div>
+          </td>
+          <td>
+            <div class="font-monospace text-light">${item.stored_token_count} tok</div>
+            <small class="text-muted">Orig: ${item.original_token_count}</small>
+          </td>
+          <td>${tagsHtml || '<span class="text-muted small">None</span>'}</td>
+          <td>
+            <button class="btn btn-sm btn-outline-warning" onclick="openOverrideModal('${item.id}')" title="Manual Override">
+              <i class="fa-solid fa-pen"></i> Override
+            </button>
+          </td>
+        </tr>
+      `;
+    });
+  }
+}
+
+function openOverrideModal(itemId) {
+  const item = currentMemories.find(m => m.id === itemId);
+  if (!item) return;
+
+  document.getElementById("overrideItemId").value = item.id;
+  document.getElementById("overrideItemPreview").innerText = item.content;
+  document.getElementById("overrideActionSelect").value = item.category;
+  document.getElementById("overrideReasonInput").value = "";
+
+  const modal = new bootstrap.Modal(document.getElementById("overrideModal"));
+  modal.show();
+}
+
+function escapeHtml(text) {
+  if (!text) return "";
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+</script>
+{% endblock %}

@@ -1,0 +1,29 @@
+# Environment variables (keep secrets out of git)
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Logs
+*.log
+server.log
+
+# Database / instance files
+instance/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
